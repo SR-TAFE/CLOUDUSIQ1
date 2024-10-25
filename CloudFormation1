@@ -1,0 +1,140 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Infrastructure for RCA Learning Exercise",
+  "Parameters": {
+    "InstanceType": {
+      "Description": "EC2 instance type",
+      "Type": "String",
+      "Default": "t2.micro",
+      "AllowedValues": ["t2.micro", "t2.small"]
+    },
+    "KeyName": {
+      "Description": "Name of an existing EC2 KeyPair",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription": "Must be the name of an existing EC2 KeyPair."
+    }
+  },
+  "Resources": {
+    "EC2Instance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": { "Ref": "InstanceType" },
+        "SecurityGroups": [ { "Ref": "InstanceSecurityGroup" } ],
+        "KeyName": { "Ref": "KeyName" },
+        "ImageId": "ami-0c55b159cbfafe1f0",
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": ["", [
+              "#!/bin/bash\n",
+              "yum update -y\n",
+              "yum install -y httpd\n",
+              "systemctl start httpd\n",
+              "systemctl enable httpd\n",
+              "echo '<html><body><h1>Test Web Server for RCA Exercise</h1></body></html>' > /var/www/html/index.html\n",
+              "# Install stress tool for CPU load simulation\n",
+              "yum install -y stress\n"
+            ]]
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "RCA-Exercise-Instance"
+          }
+        ]
+      }
+    },
+    "InstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Enable SSH and HTTP access",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "CPUAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "CPU utilization monitoring for RCA exercise",
+        "AlarmName": "RCA-Exercise-CPU-Alarm",
+        "ComparisonOperator": "GreaterThanThreshold",
+        "EvaluationPeriods": "2",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Period": "300",
+        "Statistic": "Average",
+        "Threshold": "80",
+        "ActionsEnabled": "true",
+        "Dimensions": [
+          {
+            "Name": "InstanceId",
+            "Value": { "Ref": "EC2Instance" }
+          }
+        ]
+      }
+    },
+    "CPUUtilizationDashboard": {
+      "Type": "AWS::CloudWatch::Dashboard",
+      "Properties": {
+        "DashboardName": "RCA-Exercise-Dashboard",
+        "DashboardBody": {
+          "Fn::Join": ["", [
+            "{",
+            "  \"widgets\": [",
+            "    {",
+            "      \"type\": \"metric\",",
+            "      \"width\": 12,",
+            "      \"height\": 6,",
+            "      \"properties\": {",
+            "        \"metrics\": [[\"AWS/EC2\", \"CPUUtilization\", \"InstanceId\", {\"Ref\": \"EC2Instance\"}]],",
+            "        \"period\": 300,",
+            "        \"stat\": \"Average\",",
+            "        \"region\": {\"Ref\": \"AWS::Region\"},",
+            "        \"title\": \"CPU Utilization\"",
+            "      }",
+            "    }",
+            "  ]",
+            "}"
+          ]]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "InstanceId": {
+      "Description": "EC2 Instance ID",
+      "Value": { "Ref": "EC2Instance" }
+    },
+    "PublicDNS": {
+      "Description": "Public DNSName of the EC2 instance",
+      "Value": { "Fn::GetAtt": [ "EC2Instance", "PublicDnsName" ] }
+    },
+    "DashboardURL": {
+      "Description": "URL for the CloudWatch Dashboard",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "https://",
+            { "Ref": "AWS::Region" },
+            ".console.aws.amazon.com/cloudwatch/home?region=",
+            { "Ref": "AWS::Region" },
+            "#dashboards:name=RCA-Exercise-Dashboard"
+          ]
+        ]
+      }
+    }
+  }
+}
